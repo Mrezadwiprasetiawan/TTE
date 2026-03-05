@@ -50,24 +50,23 @@ struct ColorSpan {
   } while (0)
 
 // Generate scroll member functions
-#define SCROLL_DEC(name, field)                                                \
-  bool scroll_##name(int dist) {                                               \
-    if (field >= dist) {                                                       \
-      field -= dist;                                                           \
-      mark_changed();                                                          \
-      return true;                                                             \
-    }                                                                          \
-    return false;                                                              \
+#define SCROLL_DEC(name, field)                    \
+  bool scroll_##name(int dist) {                   \
+    if (field >= dist) { field -= dist; }          \
+    else if (field)    { field  = 0;    }          \
+    else               { return false;  }          \
+    mark_changed();                                \
+    return true;                                   \
   }
 
-#define SCROLL_INC(name, field, limit)                                         \
-  bool scroll_##name(int dist) {                                               \
-    if (field + dist + (limit) <= (int)data.size() + 1) {                      \
-      field += dist;                                                           \
-      mark_changed();                                                          \
-      return true;                                                             \
-    }                                                                          \
-    return false;                                                              \
+#define SCROLL_INC(name, field, limit)                                    \
+  bool scroll_##name(int dist) {                                          \
+    int cap = (int)data.size() - (limit);                                 \
+    if      (field + dist <= cap) { field += dist; }                      \
+    else if (field        != cap) { field  = cap;  }                      \
+    else                          { return false;  }                      \
+    mark_changed();                                                       \
+    return true;                                                          \
   }
 
 class Display {
@@ -308,8 +307,7 @@ public:
         scroll_lft(rem);
       }
       break;
-    }
-    }
+    }    }
   }
 
   // Returns {dataRow, dataCol} (0-based) of the cursor in the full data buffer.
@@ -464,6 +462,8 @@ public:
 
     for (int y = 0; y < height; ++y) {
       int row = startRowData + y;
+      char pos[32];
+      renderBuf.append(pos,snprintf(pos,32,"\x1b[%d;1H",y+1));
 
       if (lineNumbering) {
         buf_line_number(row);
