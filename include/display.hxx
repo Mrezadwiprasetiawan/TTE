@@ -29,24 +29,19 @@ struct ColorSpan {
   std::array<int, 3> RGB;
 };
 
-// Generate scroll member functions
-#define SCROLL_DEC(name, field)                    \
-  bool scroll_##name(int dist) {                   \
-    if (field >= dist) { field -= dist; }          \
-    else if (field)    { field  = 0;    }          \
-    else               { return false;  }          \
-    mark_changed();                                \
-    return true;                                   \
-  }
-
-#define SCROLL_INC(name, field, limit)                                    \
-  bool scroll_##name(int dist) {                                          \
-    int cap = (int)data.size() - (limit);                                 \
-    if      (field + dist <= cap) { field += dist; }                      \
-    else if (field        != cap) { field  = cap;  }                      \
-    else                          { return false;  }                      \
-    mark_changed();                                                       \
-    return true;                                                          \
+// Generate scroll member functions (horizontal only — vertical uses terminal
+// scroll regions)
+#define SCROLL_DEC(name, field)                                                \
+  bool scroll_##name(int dist) {                                               \
+    if (field >= dist) {                                                       \
+      field -= dist;                                                           \
+    } else if (field) {                                                        \
+      field = 0;                                                               \
+    } else {                                                                   \
+      return false;                                                            \
+    }                                                                          \
+    mark_changed();                                                            \
+    return true;                                                               \
   }
 
 class Display {
@@ -64,6 +59,7 @@ class Display {
   void clamp_col_to_row();
   void emit_cursor_ansi(int r, int c);
   void buf_line_number(int dataRow);
+  void render_line(int y);
 
   Display();
   bool alt_screen = false;
@@ -96,6 +92,13 @@ class Display {
   std::vector<ColorSpan> bg, fg;
 
   std::string renderBuf;
+  std::array<int, 3> renderCurBg = {-1, -1, -1};
+  std::array<int, 3> renderCurFg = {-1, -1, -1};
+
+  // Incremental scroll state
+  bool scrollPending = false;
+  Dir scrollPendingDir = Dir::UP;
+  int scrollPendingDist = 0;
 
 public:
   Display(const Display &) = delete;
@@ -108,6 +111,7 @@ public:
   void insert(int row, int col, char c);
   void erase(int row, int col);
   void insert_line(int row);
+  void newline();
 
   void enterAlternateScreen();
   void exitAlternateScreen();
@@ -131,7 +135,7 @@ public:
   // Returns {dataRow, dataCol} (0-based) of the cursor in the full data buffer.
   std::array<int, 2> get_cursor_data_pos();
 
-  void scroll_to(int y, int x);
+  void scroll_dir_to(Dir dir, int dist);
 
   // Move cursor to the first column of the current line.
   void go_line_start();
@@ -140,10 +144,10 @@ public:
   // scrolling horizontally so it is visible.
   void go_line_end();
 
-  SCROLL_DEC(up, startRowData)
   SCROLL_DEC(lft, startColData)
-  SCROLL_INC(bot, startRowData, height)
 
+  bool scroll_up(int dist);
+  bool scroll_bot(int dist);
   bool scroll_rgt(int dist);
 
   void fgRGB(int r, int g, int b);
@@ -196,4 +200,3 @@ public:
 
 // Clean up macros so they don't pollute other translation units
 #undef SCROLL_DEC
-#undef SCROLL_INC

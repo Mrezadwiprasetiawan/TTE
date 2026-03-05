@@ -1,6 +1,5 @@
 #pragma once
 
-#include <functional>
 #include <mutex>
 #include <queue>
 #include <signal.h>
@@ -56,13 +55,11 @@ struct Event {
 };
 
 struct InputCallbacks {
-  std::function<void(int w, int h)> onResize;
-  std::function<void(const Event &)> onKey;
-  std::function<void(const Event &)> onMousePress;
-  std::function<void(const Event &)> onMouseRelease;
-  std::function<void(const Event &)> onMouseMove;
-  std::function<void(const Event &)> onMouseScroll;
-  std::function<void(const Event &)> onUnhandled;
+#define FUNC_EVENT(name) (*name)(void*,const Event &)
+  void (*onResize)(void*,int, int), FUNC_EVENT(onKey), FUNC_EVENT(onMousePress),
+      FUNC_EVENT(onMouseRelease), FUNC_EVENT(onMouseMove),
+      FUNC_EVENT(onMouseScroll), FUNC_EVENT(onUnhandled);
+  void *ctx;
 };
 
 class InputHandler {
@@ -70,12 +67,9 @@ class InputHandler {
 
   void push(const Event &e);
 
-  InputCallbacks callbacks;
-
-  std::queue<Event> back_queue;
-  std::queue<Event> present_queue;
+  InputCallbacks cbs;
+  std::queue<Event> back_queue, present_queue;
   std::mutex mutex;
-
   bool polling = false;
   std::thread poll_thread;
 

@@ -47,50 +47,53 @@ int main(int argc, const char **argv) {
   Display &disp = Display::getInstance();
   InputHandler &inHdl = InputHandler::getInstance();
   InputCallbacks cbs;
+  cbs.ctx = &disp;
 
-  cbs.onResize = [&disp](int w, int h) {
-    disp.notify_resize(w, h);
-    disp.mark_changed();
+  cbs.onResize = [](void *ctx, int w, int h) {
+    Display *disp = (Display *)ctx;
+    disp->notify_resize(w, h);
+    disp->mark_changed();
   };
 
-  cbs.onKey = [&disp](Event e) {
+  cbs.onKey = [](void *ctx, const Event &e) {
+    Display *disp = (Display *)ctx;
+    std::array<int, 2> pos = disp->get_cursor_pos();
     switch (e.key) {
     default: {
-      std::array<int, 2> pos = disp.get_cursor_pos();
-      disp.insert(pos[0], pos[1], e.ch);
+      disp->insert(pos[0], pos[1], e.ch);
       break;
     }
-    case Event::KeyCode::Backspace: {
-      std::array<int, 2> pos = disp.get_cursor_pos();
-      disp.erase(pos[0], pos[1] - 1);
+    case Event::KeyCode::Enter:
+      disp->newline();
       break;
-    }
-
+    case Event::KeyCode::Backspace:
+      disp->erase(pos[0], pos[1] - 1);
+      break;
     case Event::KeyCode::Up:
-      disp.move_cursor_relative(Dir::UP, 1);
+      disp->move_cursor_relative(Dir::UP, 1);
       break;
     case Event::KeyCode::Down:
-      disp.move_cursor_relative(Dir::BOT, 1);
+      disp->move_cursor_relative(Dir::BOT, 1);
       break;
     case Event::KeyCode::Left:
-      disp.move_cursor_relative(Dir::LFT, 1);
+      disp->move_cursor_relative(Dir::LFT, 1);
       break;
     case Event::KeyCode::Right:
-      disp.move_cursor_relative(Dir::RGT, 1);
+      disp->move_cursor_relative(Dir::RGT, 1);
       break;
 
     case Event::KeyCode::PageUp:
-      disp.scroll_up(disp.get_height());
+      disp->scroll_up(disp->get_height());
       break;
     case Event::KeyCode::PageDown:
-      disp.scroll_bot(disp.get_height());
+      disp->scroll_bot(disp->get_height());
       break;
 
     case Event::KeyCode::Home:
-      disp.go_line_start();
+      disp->go_line_start();
       break;
     case Event::KeyCode::End:
-      disp.go_line_end();
+      disp->go_line_end();
       break;
 
     case Event::KeyCode::Ctrl:
@@ -100,18 +103,19 @@ int main(int argc, const char **argv) {
     }
   };
 
-  cbs.onMouseScroll = [&disp](const Event &e) {
+  cbs.onMouseScroll = [](void *ctx, const Event &e) {
+    Display *disp = (Display *)ctx;
     if (e.delta > 0)
-      disp.scroll_up(e.delta);
+      disp->scroll_up(e.delta);
     else
-      disp.scroll_bot(-e.delta);
+      disp->scroll_bot(-e.delta);
   };
 
   signal(SIGINT, SIGINT_handler);
   inHdl.set_callbacks(cbs);
   inHdl.start_poll();
   disp.set_data(data);
-  disp.setCursorBlink(CursorBlink::underline);
+  disp.setCursorBlink(CursorBlink::bar);
   while (run) {
     inHdl.pop();
     disp.render();
