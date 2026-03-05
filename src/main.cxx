@@ -1,9 +1,9 @@
 #include <csignal>
 #include <display.hxx>
+#include <fstream>
 #include <input_handler.hxx>
 #include <string>
 #include <unistd.h>
-#include <fstream>
 #include <vector>
 
 static std::vector<std::vector<char>> parse_raw(const std::string &s,
@@ -33,14 +33,16 @@ void SIGINT_handler(int signal) { run = 0; }
 int main(int argc, const char **argv) {
   using namespace std;
   vector<vector<char>> data;
-  string filename ="";
-  if(argc > 1) filename = string(argv[1]);
-  if(!filename.empty()){
-     ifstream in(filename);
-     if(in.good()){
-       string line;
-       while(getline(in, line)) data.emplace_back(line.begin(), line.end());
-     }
+  string filename = "";
+  if (argc > 1)
+    filename = string(argv[1]);
+  if (!filename.empty()) {
+    ifstream in(filename);
+    if (in.good()) {
+      string line;
+      while (getline(in, line))
+        data.emplace_back(line.begin(), line.end());
+    }
   }
   Display &disp = Display::getInstance();
   InputHandler &inHdl = InputHandler::getInstance();
@@ -53,16 +55,16 @@ int main(int argc, const char **argv) {
 
   cbs.onKey = [&disp](Event e) {
     switch (e.key) {
-    default:{
-              std::array<int,2> pos = disp.get_cursor_pos();
-              disp.insert(pos[0], pos[1], e.ch);
-              break;
-            }
-    case Event::KeyCode::Backspace : {
-                                        std::array<int,2> pos = disp.get_cursor_pos();
-                                        disp.erase(pos[0],pos[1] - 1);
-                                        break;
-                                     }
+    default: {
+      std::array<int, 2> pos = disp.get_cursor_pos();
+      disp.insert(pos[0], pos[1], e.ch);
+      break;
+    }
+    case Event::KeyCode::Backspace: {
+      std::array<int, 2> pos = disp.get_cursor_pos();
+      disp.erase(pos[0], pos[1] - 1);
+      break;
+    }
 
     case Event::KeyCode::Up:
       disp.move_cursor_relative(Dir::UP, 1);
@@ -100,9 +102,9 @@ int main(int argc, const char **argv) {
 
   cbs.onMouseScroll = [&disp](const Event &e) {
     if (e.delta > 0)
-      disp.scroll_up(3);
+      disp.scroll_up(e.delta);
     else
-      disp.scroll_bot(3);
+      disp.scroll_bot(e.delta);
   };
 
   signal(SIGINT, SIGINT_handler);

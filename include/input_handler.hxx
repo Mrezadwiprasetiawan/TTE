@@ -69,42 +69,42 @@ class InputHandler {
   InputHandler() {
 #ifndef _WIN32
     signal(SIGWINCH, handle_winch);
-    tcgetattr(STDIN_FILENO, &orig_);
+    tcgetattr(STDIN_FILENO, &orig);
 #else
-    hIn_ = GetStdHandle(STD_INPUT_HANDLE);
-    if (hIn_ != INVALID_HANDLE_VALUE)
-      GetConsoleMode(hIn_, &inModeOrig_);
+    hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn != INVALID_HANDLE_VALUE)
+      GetConsoleMode(hIn, &inModeOrig);
 #endif
     enable_raw();
     enable_mouse();
   }
 
   void push(const Event &e) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    back_queue_.push(e);
+    std::lock_guard<std::mutex> lock(mutex);
+    back_queue.push(e);
   }
 
-  InputCallbacks callbacks_;
+  InputCallbacks callbacks;
 
-  std::queue<Event> back_queue_;
-  std::queue<Event> present_queue_;
-  std::mutex mutex_;
+  std::queue<Event> back_queue;
+  std::queue<Event> present_queue;
+  std::mutex mutex;
 
-  bool polling_ = false;
-  std::thread poll_thread_;
+  bool polling = false;
+  std::thread poll_thread;
 
 #ifndef _WIN32
-  inline static volatile bool winch_flag_ = false;
-  static void handle_winch(int) { winch_flag_ = true; }
-  termios orig_{};
+  inline static volatile bool winch_flag = false;
+  static void handle_winch(int) { winch_flag = true; }
+  termios orig{};
 #else
-  HANDLE hIn_ = nullptr;
-  DWORD inModeOrig_ = 0;
+  HANDLE hIn = nullptr;
+  DWORD inModeOrig = 0;
 #endif
 
   void enable_raw() {
 #ifndef _WIN32
-    termios t = orig_;
+    termios t = orig;
     t.c_lflag &= ~(ICANON | ECHO | ISIG);
     t.c_iflag &= ~(IXON | ICRNL);
     t.c_oflag &= ~(OPOST);
@@ -112,21 +112,21 @@ class InputHandler {
     t.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &t);
 #else
-    if (!hIn_)
+    if (!hIn)
       return;
-    DWORD m = inModeOrig_;
+    DWORD m = inModeOrig;
     m &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
     m |= ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
-    SetConsoleMode(hIn_, m);
+    SetConsoleMode(hIn, m);
 #endif
   }
 
   void disable_raw() {
 #ifndef _WIN32
-    tcsetattr(STDIN_FILENO, TCSANOW, &orig_);
+    tcsetattr(STDIN_FILENO, TCSANOW, &orig);
 #else
-    if (hIn_)
-      SetConsoleMode(hIn_, inModeOrig_);
+    if (hIn)
+      SetConsoleMode(hIn, inModeOrig);
 #endif
   }
 
@@ -151,32 +151,32 @@ class InputHandler {
   void dispatch(const Event &e) {
     switch (e.type) {
     case Event::Type::Resize:
-      if (callbacks_.onResize)
-        callbacks_.onResize(e.w, e.h);
+      if (callbacks.onResize)
+        callbacks.onResize(e.w, e.h);
       break;
     case Event::Type::Key:
-      if (callbacks_.onKey)
-        callbacks_.onKey(e);
+      if (callbacks.onKey)
+        callbacks.onKey(e);
       break;
     case Event::Type::MousePress:
-      if (callbacks_.onMousePress)
-        callbacks_.onMousePress(e);
+      if (callbacks.onMousePress)
+        callbacks.onMousePress(e);
       break;
     case Event::Type::MouseRelease:
-      if (callbacks_.onMouseRelease)
-        callbacks_.onMouseRelease(e);
+      if (callbacks.onMouseRelease)
+        callbacks.onMouseRelease(e);
       break;
     case Event::Type::MouseMove:
-      if (callbacks_.onMouseMove)
-        callbacks_.onMouseMove(e);
+      if (callbacks.onMouseMove)
+        callbacks.onMouseMove(e);
       break;
     case Event::Type::MouseScroll:
-      if (callbacks_.onMouseScroll)
-        callbacks_.onMouseScroll(e);
+      if (callbacks.onMouseScroll)
+        callbacks.onMouseScroll(e);
       break;
     default:
-      if (callbacks_.onUnhandled)
-        callbacks_.onUnhandled(e);
+      if (callbacks.onUnhandled)
+        callbacks.onUnhandled(e);
       break;
     }
   }
@@ -184,8 +184,8 @@ class InputHandler {
   void poll_loop() {
     while (true) {
       {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!polling_)
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!polling)
           break;
       }
 
@@ -196,8 +196,8 @@ class InputHandler {
       timeval tv{0, 1000};
       int ready = select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv);
 
-      if (winch_flag_) {
-        winch_flag_ = false;
+      if (winch_flag) {
+        winch_flag = false;
         struct winsize ws;
         ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
         Event e;
@@ -355,11 +355,11 @@ class InputHandler {
 #else // _WIN32
       INPUT_RECORD rec[32];
       DWORD n = 0;
-      if (!PeekConsoleInput(hIn_, rec, 32, &n) || !n) {
+      if (!PeekConsoleInput(hIn, rec, 32, &n) || !n) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         continue;
       }
-      ReadConsoleInput(hIn_, rec, n, &n);
+      ReadConsoleInput(hIn, rec, n, &n);
       for (DWORD i = 0; i < n; ++i) {
         auto &r = rec[i];
         if (r.EventType == WINDOW_BUFFER_SIZE_EVENT) {
@@ -432,31 +432,31 @@ public:
 
   void pop() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      std::swap(present_queue_, back_queue_);
+      std::lock_guard<std::mutex> lock(mutex);
+      std::swap(present_queue, back_queue);
     }
-    while (!present_queue_.empty()) {
-      dispatch(present_queue_.front());
-      present_queue_.pop();
+    while (!present_queue.empty()) {
+      dispatch(present_queue.front());
+      present_queue.pop();
     }
   }
 
   void start_poll() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      polling_ = true;
+      std::lock_guard<std::mutex> lock(mutex);
+      polling = true;
     }
-    poll_thread_ = std::thread(&InputHandler::poll_loop, this);
+    poll_thread = std::thread(&InputHandler::poll_loop, this);
   }
 
   void stop_poll() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      polling_ = false;
+      std::lock_guard<std::mutex> lock(mutex);
+      polling = false;
     }
-    if (poll_thread_.joinable())
-      poll_thread_.join();
+    if (poll_thread.joinable())
+      poll_thread.join();
   }
 
-  void set_callbacks(InputCallbacks cbs) { callbacks_ = std::move(cbs); }
+  void set_callbacks(InputCallbacks cbs) { callbacks = std::move(cbs); }
 };
