@@ -104,7 +104,7 @@ int main(int argc, const char **argv) {
     if (e.delta > 0)
       disp.scroll_up(e.delta);
     else
-      disp.scroll_bot(e.delta);
+      disp.scroll_bot(-e.delta);
   };
 
   signal(SIGINT, SIGINT_handler);

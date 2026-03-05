@@ -418,12 +418,64 @@ public:
   std::vector<std::vector<char>> &get_data() { return data; }
   const std::vector<std::vector<char>> &get_data() const { return data; }
 
+  // Add a span while ensuring the new span is always fully visible.
+  //
+  // Rules (applied per existing span on the same row):
+  //   1. Identical (row, start, end)  → replace in-place (color swapped).
+  //   2. Overlap                      → trim the existing span so the new one
+  //                                     is never obscured; if an existing span
+  //                                     fully contains the new one it is split
+  //                                     into a left and right remnant.
+  //   3. No overlap / different row   → keep as-is.
+  static void add_span(std::vector<ColorSpan> &spans, ColorSpan s) {
+    std::vector<ColorSpan> result;
+    result.reserve(spans.size() + 2); // at most one split = +2
+
+    for (const auto &ex : spans) {
+      // Different row → untouched
+      if (ex.row != s.row) {
+        result.push_back(ex);
+        continue;
+      }
+
+      // Identical location → drop existing; new span replaces it entirely
+      if (ex.start == s.start && ex.end == s.end)
+        continue;
+
+      // No overlap → keep existing
+      if (ex.end < s.start || ex.start > s.end) {
+        result.push_back(ex);
+        continue;
+      }
+
+      // Overlapping: keep only the parts of `ex` that lie outside `s`
+
+      // Left remnant  [ex.start .. s.start-1]
+      if (ex.start < s.start) {
+        ColorSpan left = ex;
+        left.end = s.start - 1;
+        result.push_back(left);
+      }
+
+      // Right remnant [s.end+1 .. ex.end]
+      if (ex.end > s.end) {
+        ColorSpan right = ex;
+        right.start = s.end + 1;
+        result.push_back(right);
+      }
+      // The portion of `ex` covered by `s` is intentionally discarded
+    }
+
+    result.push_back(s); // new span always appended last (highest priority)
+    spans = std::move(result);
+  }
+
   void set_bg_span(ColorSpan s) {
-    bg.push_back(s);
+    add_span(bg, s);
     mark_changed();
   }
   void set_fg_span(ColorSpan s) {
-    fg.push_back(s);
+    add_span(fg, s);
     mark_changed();
   }
   void clear_color_spans() {
