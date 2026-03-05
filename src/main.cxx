@@ -3,18 +3,8 @@
 #include <input_handler.hxx>
 #include <string>
 #include <unistd.h>
-
-const std::string default_data =
-    R"(Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor. Cras elementum ultrices diam. Maecenas ligula massa, varius a, semper congue, euismod non, mi.
-Proin porttitor, orci nec nonummy molestie, enim est eleifend mi, non fermentum diam nisl sit amet erat. Duis semper. Duis arcu massa, scelerisque vitae, consequat in, pretium a, enim. Pellentesque congue.
-Ut in risus volutpat libero pharetra tempor. Cras vestibulum bibendum augue. Praesent egestas leo in pede. Praesent blandit odio eu enim. Pellentesque sed dui ut augue blandit sodales.
-Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Aliquam nibh. Mauris ac mauris sed pede pellentesque fermentum. Maecenas adipiscing ante non diam sodales hendrerit.
-Ut velit mauris, egestas sed, gravida nec, ornare ut, mi. Aenean ut orci vel massa suscipit pulvinar. Nulla sollicitudin. Fusce varius, ligula non tempus aliquam, nunc turpis ullamcorper nibh, in tempus sapien eros vitae ligula.
-Pellentesque rhoncus nunc et augue. Integer id felis. Curabitur aliquet pellentesque diam. Integer quis metus vitae elit lobortis egestas.
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi vel erat non mauris convallis vehicula. Nulla et sapien. Integer tortor tellus, aliquam faucibus, convallis id, congue eu, quam. Mauris ullamcorper felis vitae erat.
-Proin feugiat, augue non elementum posuere, metus purus iaculis lectus, et tristique ligula justo vitae magna. Aliquam convallis sollicitudin purus. Praesent aliquam, enim at fermentum mollis, ligula massa adipiscing nisl, ac euismod nibh nisl eu lectus.
-Fusce vulputate sem at sapien. Vivamus leo. Aliquam euismod libero eu enim. Nulla nec felis sed leo placerat imperdiet. Aenean suscipit nulla in justo.
-Suspendisse cursus rutrum augue. Nulla tincidunt tincidunt mi. Curabitur iaculis, lorem vel rhoncus faucibus, felis magna fermentum augue, et ultricies lacus lorem varius purus. Curabitur eu amet.)";
+#include <fstream>
+#include <vector>
 
 static std::vector<std::vector<char>> parse_raw(const std::string &s,
                                                 int tabSize) {
@@ -41,6 +31,17 @@ volatile std::sig_atomic_t run = 1;
 void SIGINT_handler(int signal) { run = 0; }
 
 int main(int argc, const char **argv) {
+  using namespace std;
+  vector<vector<char>> data;
+  string filename ="";
+  if(argc > 1) filename = string(argv[1]);
+  if(!filename.empty()){
+     ifstream in(filename);
+     if(in.good()){
+       string line;
+       while(getline(in, line)) data.emplace_back(line.begin(), line.end());
+     }
+  }
   Display &disp = Display::getInstance();
   InputHandler &inHdl = InputHandler::getInstance();
   InputCallbacks cbs;
@@ -52,8 +53,16 @@ int main(int argc, const char **argv) {
 
   cbs.onKey = [&disp](Event e) {
     switch (e.key) {
-    default:
-      return;
+    default:{
+              std::array<int,2> pos = disp.get_cursor_pos();
+              disp.insert(pos[0], pos[1], e.ch);
+              break;
+            }
+    case Event::KeyCode::Backspace : {
+                                        std::array<int,2> pos = disp.get_cursor_pos();
+                                        disp.erase(pos[0],pos[1] - 1);
+                                        break;
+                                     }
 
     case Event::KeyCode::Up:
       disp.move_cursor_relative(Dir::UP, 1);
@@ -70,11 +79,9 @@ int main(int argc, const char **argv) {
 
     case Event::KeyCode::PageUp:
       disp.scroll_up(disp.get_height());
-      disp.mark_changed();
       break;
     case Event::KeyCode::PageDown:
       disp.scroll_bot(disp.get_height());
-      disp.mark_changed();
       break;
 
     case Event::KeyCode::Home:
@@ -96,18 +103,17 @@ int main(int argc, const char **argv) {
       disp.scroll_up(3);
     else
       disp.scroll_bot(3);
-    disp.mark_changed();
   };
 
   signal(SIGINT, SIGINT_handler);
   inHdl.set_callbacks(cbs);
   inHdl.start_poll();
-  disp.set_data(parse_raw(default_data, 2));
+  disp.set_data(data);
   disp.setCursorBlink(CursorBlink::underline);
   while (run) {
     inHdl.pop();
     disp.render();
-    usleep(32);
+    usleep(16);
   }
   disp.exitAlternateScreen();
   return 0;

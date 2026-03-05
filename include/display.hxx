@@ -82,16 +82,12 @@ class Display {
   }
   void write_raw(const std::string &s) { write_raw(s.data(), s.size()); }
 
-  // ── Render-buffer colour helpers ─────────────────────────────────────────
-
   void buf_bg(const std::array<int, 3> &c) { BUF_BG(c[0], c[1], c[2]); }
   void buf_fg(const std::array<int, 3> &c) { BUF_FG(c[0], c[1], c[2]); }
 
   static bool rgb_eq(const std::array<int, 3> &a, const std::array<int, 3> &b) {
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
   }
-
-  // ── Viewport / cursor geometry ───────────────────────────────────────────
 
   int content_width() const {
     return lineNumbering_ ? width_ - lnWidth_ : width_;
@@ -110,8 +106,6 @@ class Display {
                      : 1;
     cursorPos_[1] = std::max(1, std::min(cursorPos_[1], maxCol));
   }
-
-  // ── Physical terminal cursor ─────────────────────────────────────────────
   //
   // emit_cursor_ansi: sends ANSI escape to move the terminal cursor.
   // (r, c) are screen-data-relative (1-based); column is automatically
@@ -178,8 +172,8 @@ class Display {
   // Line-number gutter
   bool lineNumbering_ = true;
   int lnWidth_ = 5;                           // digits + 1 trailing space
-  std::array<int, 3> lnBg_ = {30, 30, 30};    // dark grey background
-  std::array<int, 3> lnFg_ = {120, 120, 120}; // mid grey foreground
+  std::array<int, 3> lnBg_ = {0, 0, 0}; 
+  std::array<int, 3> lnFg_ = {255,255,255};
 
   const int extraHeight_ = 3;
 
@@ -213,6 +207,19 @@ public:
 #endif
     showCursor();
   }
+
+  void insert(int row, int col, char c){
+    int reqRow = startRowData_ + row -1, reqCol = startColData_ + col - 1;
+    data_[reqRow].insert(data_[reqRow].begin() + reqCol , c);
+    move_cursor_relative(Dir::RGT,1);
+  }
+  void erase(int row, int col){
+    int reqRow = startRowData_ + row -1, reqCol = startColData_ + col - 1;
+    if(col == 0) data_.erase(data_.begin() + reqRow);
+    else data_[reqRow].erase(data_[reqRow].begin() + reqCol);
+    mark_changed();
+  }
+  void insert_line(int row) {}
 
   void enterAlternateScreen() {
     if (alt_screen_)
@@ -457,6 +464,7 @@ public:
   void render() {
     if (!isChanged_)
       return;
+    hideCursor();
 
     renderBuf_.clear();
     renderBuf_.append("\x1b[2J\x1b[H", 7);
@@ -536,6 +544,7 @@ public:
 
     write_raw(renderBuf_.data(), renderBuf_.size());
     reset();
+    showCursor();
 
     // cursorPos_ is screen-data-relative; emit_cursor_ansi adds lnWidth_
     // offset.
