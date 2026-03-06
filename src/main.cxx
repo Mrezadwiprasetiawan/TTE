@@ -46,6 +46,7 @@ int main(int argc, const char **argv) {
   }
   Display &disp = Display::getInstance();
   InputHandler &inHdl = InputHandler::getInstance();
+  disp.set_line_numbering(0);
   InputCallbacks cbs;
   cbs.ctx = &disp;
 
