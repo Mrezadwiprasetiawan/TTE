@@ -1,4 +1,4 @@
-#include <display.hxx>
+#include <cursor.hxx>  // also pulls in display.hxx
 
 // Append a 24-bit ANSI colour escape into renderBuf
 #define BUF_COLOR(layer, r, g, b)                                              \
@@ -43,25 +43,13 @@ int Display::content_width() const {
 
 int Display::content_height() const { return height; }
 
-// Length of the data row currently under the cursor
-int Display::cur_row_len() const {
-  int dr = startRowData + (cursorPos[0] - 1);
-  return (dr < (int)data.size()) ? (int)data[dr].size() : 0;
-}
-
-void Display::clamp_col_to_row() {
-  int len = cur_row_len();
-  int maxCol = (len > startColData)
-                   ? std::min(content_width() + 1, len - startColData + 1)
-                   : 1;
-  cursorPos[1] = std::max(1, std::min(cursorPos[1], maxCol));
-}
-
 void Display::emit_cursor_ansi(int r, int c) {
   char buf[32];
   int termCol = c + (lineNumbering ? lnWidth : 0);
   write_raw(buf, snprintf(buf, 32, "\x1b[%d;%dH", r, termCol));
 }
+
+void Display::show_cursor_raw() { write_raw("\x1b[?25h", 6); }
 
 void Display::buf_line_number(int dataRow) {
   BUF_BG(lnBg[0], lnBg[1], lnBg[2]);
@@ -128,7 +116,7 @@ Display::~Display() {
   if (hOut)
     SetConsoleMode(hOut, outModeOrig);
 #endif
-  showCursor();
+  show_cursor_raw();
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +129,7 @@ void Display::insert(int row, int col, char c) {
     return;
   data[reqRow].insert(data[reqRow].begin() + reqCol, c);
   mark_row_changed(row - 1);
-  move_cursor_relative(Dir::RGT, 1);
+  Cursor::getInstance().move_relative(Dir::RGT, 1);
 }
 
 void Display::erase(int row, int col) {
@@ -165,17 +153,18 @@ void Display::erase(int row, int col) {
       scroll_up(1 - newScreenRow);
       newScreenRow = 1;
     }
-    cursorPos[0] = newScreenRow;
+    int newCol;
     int cw = content_width();
     if (junctionCol < startColData) {
       startColData = junctionCol;
-      cursorPos[1] = 1;
+      newCol = 1;
     } else if (junctionCol - startColData + 1 > cw) {
       startColData = junctionCol - cw + 1;
-      cursorPos[1] = cw;
+      newCol = cw;
     } else {
-      cursorPos[1] = junctionCol - startColData + 1;
+      newCol = junctionCol - startColData + 1;
     }
+    Cursor::getInstance().move(newScreenRow, newCol);
   } else {
     // Erase the character before the cursor
     int reqCol = startColData + col - 1;
@@ -189,7 +178,7 @@ void Display::erase(int row, int col) {
     } else {
       mark_row_changed(row - 1);
     }
-    move_cursor_relative(Dir::LFT, 1);
+    Cursor::getInstance().move_relative(Dir::LFT, 1);
   }
 }
 
@@ -213,11 +202,13 @@ void Display::insert_line(int row) {
 }
 
 void Display::newline() {
-  int dataRow = startRowData + cursorPos[0] - 1;
+  Cursor &cur = Cursor::getInstance();
+  auto cpos = cur.get_pos();
+  int dataRow = startRowData + cpos[0] - 1;
   if (dataRow < 0 || dataRow >= (int)data.size())
     return;
 
-  int dataCol = startColData + cursorPos[1] - 1;
+  int dataCol = startColData + cpos[1] - 1;
   auto &curLine = data[dataRow];
 
   std::vector<char> newLine(
@@ -226,15 +217,18 @@ void Display::newline() {
   if (dataCol < (int)curLine.size())
     curLine.erase(curLine.begin() + dataCol, curLine.end());
 
-  insert_line(cursorPos[0]);
+  insert_line(cpos[0]);
   data[dataRow + 1] = std::move(newLine);
 
   startColData = 0;
-  if (cursorPos[0] < content_height())
-    cursorPos[0] += 1;
-  else
+  int newRow;
+  if (cpos[0] < content_height()) {
+    newRow = cpos[0] + 1;
+  } else {
     scroll_bot(1);
-  cursorPos[1] = 1;
+    newRow = content_height();
+  }
+  cur.move(newRow, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -256,110 +250,17 @@ void Display::exitAlternateScreen() {
 }
 
 void Display::clear() { write_raw("\x1b[2J\x1b[H", 7); }
-void Display::hideCursor() { write_raw("\x1b[?25l", 6); }
-void Display::showCursor() { write_raw("\x1b[?25h", 6); }
-
-void Display::setCursorBlink(CursorBlink b) {
-  char buf[16];
-  write_raw(buf, snprintf(buf, 16, "\x1b[%d q", (int)b));
-}
-
-// ---------------------------------------------------------------------------
-// Cursor movement
-// ---------------------------------------------------------------------------
-
-void Display::move_cursor(int r, int c) { cursorPos = {r, c}; }
-void Display::move_cursor(std::array<int, 2> pos) { move_cursor(pos[0], pos[1]); }
-
-void Display::move_cursor_relative(Dir dir, int dist) {
-  if (dist <= 0)
-    return;
-  switch (dir) {
-  case Dir::UP: {
-    if (cursorPos[0] - dist >= 1) {
-      cursorPos[0] -= dist;
-    } else {
-      int rem = dist - (cursorPos[0] - 1);
-      cursorPos[0] = 1;
-      scroll_up(rem);
-    }
-    clamp_col_to_row();
-    break;
-  }
-  case Dir::BOT: {
-    int target = startRowData + (cursorPos[0] - 1) + dist;
-    if (target >= (int)data.size())
-      break;
-    if (cursorPos[0] + dist <= content_height()) {
-      cursorPos[0] += dist;
-    } else {
-      int over = (cursorPos[0] + dist) - content_height();
-      cursorPos[0] = content_height();
-      scroll_bot(over);
-    }
-    clamp_col_to_row();
-    break;
-  }
-  case Dir::RGT: {
-    int cw = content_width();
-    int maxCol = std::min(cw, cur_row_len() - startColData);
-    if (cursorPos[1] + dist <= maxCol + 1) {
-      cursorPos[1] += dist;
-    } else if (cursorPos[1] <= maxCol) {
-      cursorPos[1] = maxCol;
-    } else if (scroll_rgt(dist)) {
-      cursorPos[1] =
-          std::min(cursorPos[1], std::min(cw, cur_row_len() - startColData));
-    }
-    break;
-  }
-  case Dir::LFT: {
-    if (cursorPos[1] - dist >= 1) {
-      cursorPos[1] -= dist;
-    } else {
-      int rem = dist - (cursorPos[1] - 1);
-      cursorPos[1] = 1;
-      scroll_lft(rem);
-    }
-    break;
-  }
-  }
-}
-
-std::array<int, 2> Display::get_cursor_data_pos() {
-  return {cursorPos[0] + startRowData - 1, cursorPos[1] + startColData - 1};
-}
-
-void Display::go_line_start() {
-  startColData = 0;
-  cursorPos[1] = 1;
-}
-
-void Display::go_line_end() {
-  int dataRow = get_cursor_data_pos()[0];
-  if (dataRow >= (int)data.size())
-    return;
-  int len = (int)data[dataRow].size();
-  int cw = content_width();
-  if (len == 0) {
-    startColData = 0;
-    cursorPos[1] = 1;
-  } else if (len <= cw) {
-    startColData = 0;
-    cursorPos[1] = len + 1;
-  } else {
-    startColData = len - cw + 1;
-    cursorPos[1] = cw + 1;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Scrolling
 // ---------------------------------------------------------------------------
 
 bool Display::scroll_up(int dist) {
-  if (startRowData == 0)
+  if (startRowData == 0) {
+    /* Already at the top — snap cursor to the first row. */
+    Cursor::getInstance().move(1, Cursor::getInstance().get_pos()[1]);
     return false;
+  }
   int actual = std::min(dist, startRowData);
   startRowData -= actual;
   if (!isChanged) {
@@ -392,8 +293,12 @@ bool Display::scroll_bot(int dist) {
   int cap = (int)data.size() - content_height();
   if (cap < 0)
     cap = 0;
-  if (startRowData >= cap)
+  if (startRowData >= cap) {
+    /* Already at the bottom — snap cursor to the last visible data row. */
+    int lastRow = std::min((int)data.size() - startRowData, content_height());
+    Cursor::getInstance().move(lastRow, Cursor::getInstance().get_pos()[1]);
     return false;
+  }
   int actual = std::min(dist, cap - startRowData);
   startRowData += actual;
   if (!isChanged) {
@@ -434,12 +339,14 @@ bool Display::scroll_lft(int dist) {
 }
 
 bool Display::scroll_rgt(int dist) {
-  if (startRowData + (cursorPos[0] - 1) >= (int)data.size())
+  auto cpos = Cursor::getInstance().get_pos();
+  if (startRowData + (cpos[0] - 1) >= (int)data.size())
     return false;
-  int row = startRowData + (cursorPos[0] - 1);
+  int row = startRowData + (cpos[0] - 1);
   int cw = content_width();
   if (startColData + dist + cw <= (int)data[row].size() + 1) {
     startColData += dist;
+    mark_changed();
     return true;
   }
   return false;
@@ -469,8 +376,10 @@ void Display::reset() { write_raw("\x1b[0m", 4); }
 void Display::notify_resize(int termW, int termH) {
   width = termW;
   height = termH - extraHeight;
-  cursorPos[0] = std::min(cursorPos[0], content_height());
-  cursorPos[1] = std::min(cursorPos[1], content_width());
+  Cursor &cur = Cursor::getInstance();
+  auto cpos = cur.get_pos();
+  cur.move(std::min(cpos[0], content_height()),
+           std::min(cpos[1], content_width()));
   dirtyRows.assign(content_height(), false);
   mark_changed();
 }
@@ -485,7 +394,6 @@ int Display::get_extra_height() const     { return extraHeight; }
 int Display::get_start_row_data() const   { return startRowData; }
 int Display::get_start_col_data() const   { return startColData; }
 bool Display::get_alt_screen() const      { return alt_screen; }
-std::array<int, 2> Display::get_cursor_pos() const { return cursorPos; }
 
 // ---------------------------------------------------------------------------
 // Getters / setters - line-number gutter
@@ -602,8 +510,8 @@ std::array<int, 3> Display::get_extra_default_bg() const { return extraDefaultBg
 // Dirty / change state
 // ---------------------------------------------------------------------------
 
-bool Display::get_is_changed() const        { return isChanged; }
-bool Display::get_scroll_pending() const    { return scrollPending; }
+bool Display::get_is_changed() const         { return isChanged; }
+bool Display::get_scroll_pending() const     { return scrollPending; }
 Dir  Display::get_scroll_pending_dir() const { return scrollPendingDir; }
 int  Display::get_scroll_pending_dist() const { return scrollPendingDist; }
 const std::vector<bool> &Display::get_dirty_rows() const { return dirtyRows; }
@@ -634,7 +542,6 @@ void Display::mark_row_changed(int screenY) {
 void Display::render_line(int y) {
   int row = startRowData + y;
   char pos[32];
-  // Position to the start of this terminal row and erase it before redrawing
   renderBuf.append(pos, snprintf(pos, 32, "\x1b[%d;1H\x1b[2K", y + 1));
 
   if (lineNumbering) {
@@ -677,16 +584,11 @@ void Display::render_line(int y) {
 }
 
 void Display::render_extra_line(int extraY) {
-  /*
-   * Terminal row for this extra line: content rows occupy 1..content_height(),
-   * so extra rows start at content_height()+1.
-   */
   int termRow = content_height() + 1 + extraY;
   char pos[32];
   renderBuf.append(pos, snprintf(pos, 32, "\x1b[%d;1H\x1b[2K", termRow));
 
   if (!extraSet) {
-    // No caller content - fill the entire row with the contrasting default bg
     if (!rgb_eq(extraDefaultBg, renderCurBg)) {
       buf_bg(extraDefaultBg);
       renderCurBg = extraDefaultBg;
@@ -734,6 +636,7 @@ void Display::render_extra_line(int extraY) {
 
 void Display::render() {
   const int ch = content_height();
+  auto cpos = Cursor::getInstance().get_pos();
 
   if (isChanged) {
     renderBuf.clear();
@@ -754,9 +657,8 @@ void Display::render() {
       render_extra_line(e);
 
     char pos[32];
-    int termCol = cursorPos[1] + (lineNumbering ? lnWidth : 0);
-    renderBuf.append(pos,
-                     snprintf(pos, 32, "\x1b[%d;%dH", cursorPos[0], termCol));
+    int termCol = cpos[1] + (lineNumbering ? lnWidth : 0);
+    renderBuf.append(pos, snprintf(pos, 32, "\x1b[%d;%dH", cpos[0], termCol));
     renderBuf.append("\x1b[?25h", 6);
 
     write_raw(renderBuf.data(), renderBuf.size());
@@ -773,10 +675,7 @@ void Display::render() {
     int dist = scrollPendingDist;
     char esc[64];
     if (scrollPendingDir == Dir::UP) {
-      /*
-       * Scroll region is restricted to 1..ch so the extra rows at the bottom
-       * are never touched by the terminal scroll operation.
-       */
+      /* Scroll region restricted to 1..ch so extra rows are never disturbed. */
       renderBuf.append(
           esc, snprintf(esc, 64, "\x1b[1;%dr\x1b[%dT\x1b[r", ch, dist));
       for (int y = 0; y < dist; ++y)
@@ -788,7 +687,6 @@ void Display::render() {
         render_line(y);
     }
 
-    // Repaint extra area if it changed during the same frame
     if (extraChanged) {
       for (int e = 0; e < extraHeight; ++e)
         render_extra_line(e);
@@ -796,9 +694,8 @@ void Display::render() {
     }
 
     char pos[32];
-    int termCol = cursorPos[1] + (lineNumbering ? lnWidth : 0);
-    renderBuf.append(pos,
-                     snprintf(pos, 32, "\x1b[%d;%dH", cursorPos[0], termCol));
+    int termCol = cpos[1] + (lineNumbering ? lnWidth : 0);
+    renderBuf.append(pos, snprintf(pos, 32, "\x1b[%d;%dH", cpos[0], termCol));
 
     write_raw(renderBuf.data(), renderBuf.size());
     scrollPending = false;
@@ -808,7 +705,7 @@ void Display::render() {
                          [](bool b) { return b; }) || extraChanged) {
     /*
      * Partial redraw: only repaint rows flagged dirty (content and/or extra).
-     * No screen clear - cursor positioning is used to target each row.
+     * No screen clear - cursor positioning targets each row individually.
      */
     renderBuf.clear();
     renderBuf.append("\x1b[?25l", 6);
@@ -826,16 +723,15 @@ void Display::render() {
     }
 
     char pos[32];
-    int termCol = cursorPos[1] + (lineNumbering ? lnWidth : 0);
-    renderBuf.append(pos,
-                     snprintf(pos, 32, "\x1b[%d;%dH", cursorPos[0], termCol));
+    int termCol = cpos[1] + (lineNumbering ? lnWidth : 0);
+    renderBuf.append(pos, snprintf(pos, 32, "\x1b[%d;%dH", cpos[0], termCol));
     renderBuf.append("\x1b[?25h", 6);
 
     write_raw(renderBuf.data(), renderBuf.size());
     std::fill(dirtyRows.begin(), dirtyRows.end(), false);
 
   } else {
-    emit_cursor_ansi(cursorPos[0], cursorPos[1]);
+    emit_cursor_ansi(cpos[0], cpos[1]);
   }
 }
 

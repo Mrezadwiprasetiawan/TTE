@@ -1,3 +1,4 @@
+#include <context.hxx>      // AppContext full definition (needed for typed dispatch)
 #include <input_handler.hxx>
 
 InputHandler::InputHandler() {
@@ -28,12 +29,11 @@ void InputHandler::enable_raw() {
   t.c_lflag &= ~(ICANON | ECHO | ISIG);
   t.c_iflag &= ~(IXON | ICRNL);
   t.c_oflag &= ~(OPOST);
-  t.c_cc[VMIN] = 0;
+  t.c_cc[VMIN]  = 0;
   t.c_cc[VTIME] = 0;
   tcsetattr(STDIN_FILENO, TCSANOW, &t);
 #else
-  if (!hIn)
-    return;
+  if (!hIn) return;
   DWORD m = inModeOrig;
   m &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
   m |= ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
@@ -45,8 +45,7 @@ void InputHandler::disable_raw() {
 #ifndef _WIN32
   tcsetattr(STDIN_FILENO, TCSANOW, &orig);
 #else
-  if (hIn)
-    SetConsoleMode(hIn, inModeOrig);
+  if (hIn) SetConsoleMode(hIn, inModeOrig);
 #endif
 }
 
@@ -72,33 +71,19 @@ void InputHandler::disable_mouse() {
 void InputHandler::dispatch(const Event &e) {
   switch (e.type) {
   case Event::Type::Resize:
-    if (cbs.onResize)
-      cbs.onResize(cbs.ctx, e.w, e.h);
-    break;
+    if (cbs.onResize)       cbs.onResize(cbs.ctx, e.w, e.h); break;
   case Event::Type::Key:
-    if (cbs.onKey)
-      cbs.onKey(cbs.ctx, e);
-    break;
+    if (cbs.onKey)          cbs.onKey(cbs.ctx, e);           break;
   case Event::Type::MousePress:
-    if (cbs.onMousePress)
-      cbs.onMousePress(cbs.ctx, e);
-    break;
+    if (cbs.onMousePress)   cbs.onMousePress(cbs.ctx, e);    break;
   case Event::Type::MouseRelease:
-    if (cbs.onMouseRelease)
-      cbs.onMouseRelease(cbs.ctx, e);
-    break;
+    if (cbs.onMouseRelease) cbs.onMouseRelease(cbs.ctx, e);  break;
   case Event::Type::MouseMove:
-    if (cbs.onMouseMove)
-      cbs.onMouseMove(cbs.ctx, e);
-    break;
+    if (cbs.onMouseMove)    cbs.onMouseMove(cbs.ctx, e);     break;
   case Event::Type::MouseScroll:
-    if (cbs.onMouseScroll)
-      cbs.onMouseScroll(cbs.ctx, e);
-    break;
+    if (cbs.onMouseScroll)  cbs.onMouseScroll(cbs.ctx, e);  break;
   default:
-    if (cbs.onUnhandled)
-      cbs.onUnhandled(cbs.ctx, e);
-    break;
+    if (cbs.onUnhandled)    cbs.onUnhandled(cbs.ctx, e);     break;
   }
 }
 
@@ -106,8 +91,7 @@ void InputHandler::poll_loop() {
   while (true) {
     {
       std::lock_guard<std::mutex> lock(mutex);
-      if (!polling)
-        break;
+      if (!polling) break;
     }
 
 #ifndef _WIN32
@@ -128,13 +112,11 @@ void InputHandler::poll_loop() {
       push(e);
     }
 
-    if (ready <= 0)
-      continue;
+    if (ready <= 0) continue;
 
     char buf[256];
     ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
-    if (n <= 0)
-      continue;
+    if (n <= 0) continue;
 
     for (ssize_t i = 0; i < n; ++i) {
       if (buf[i] == 27) {
@@ -142,29 +124,23 @@ void InputHandler::poll_loop() {
         if (i + 2 < n && buf[i + 1] == '[' && buf[i + 2] == '<') {
           i += 3;
           int b = 0, x = 0, y = 0;
-          while (i < n && buf[i] != ';')
-            b = b * 10 + (buf[i++] - '0');
+          while (i < n && buf[i] != ';') b = b * 10 + (buf[i++] - '0');
           ++i;
-          while (i < n && buf[i] != ';')
-            x = x * 10 + (buf[i++] - '0');
+          while (i < n && buf[i] != ';') x = x * 10 + (buf[i++] - '0');
           ++i;
-          while (i < n && buf[i] != 'M' && buf[i] != 'm')
-            y = y * 10 + (buf[i++] - '0');
-          if (i >= n)
-            break;
+          while (i < n && buf[i] != 'M' && buf[i] != 'm') y = y * 10 + (buf[i++] - '0');
+          if (i >= n) break;
           bool press = (buf[i] == 'M');
           Event e;
-          e.x = x;
-          e.y = y;
+          e.x = x; e.y = y;
           if (b & 64) {
-            e.type = Event::Type::MouseScroll;
+            e.type  = Event::Type::MouseScroll;
             e.delta = (b & 1) ? -1 : 1;
           } else if (b & 32) {
-            e.type = Event::Type::MouseMove;
+            e.type   = Event::Type::MouseMove;
             e.button = b & 3;
           } else {
-            e.type =
-                press ? Event::Type::MousePress : Event::Type::MouseRelease;
+            e.type   = press ? Event::Type::MousePress : Event::Type::MouseRelease;
             e.button = b & 3;
           }
           push(e);
@@ -177,111 +153,52 @@ void InputHandler::poll_loop() {
           e.type = Event::Type::Key;
           bool handled = true;
           switch (buf[i]) {
-          case 'A':
-            e.key = Event::KeyCode::Up;
-            break;
-          case 'B':
-            e.key = Event::KeyCode::Down;
-            break;
-          case 'C':
-            e.key = Event::KeyCode::Right;
-            break;
-          case 'D':
-            e.key = Event::KeyCode::Left;
-            break;
-          case 'H':
-            e.key = Event::KeyCode::Home;
-            break;
-          case 'F':
-            e.key = Event::KeyCode::End;
-            break;
-          case '1':
-            if (i + 1 < n && buf[i + 1] == '~') {
-              e.key = Event::KeyCode::Home;
-              ++i;
-            } else
-              handled = false;
-            break;
-          case '2':
-            if (i + 1 < n && buf[i + 1] == '~') {
-              e.key = Event::KeyCode::Insert;
-              ++i;
-            } else
-              handled = false;
-            break;
-          case '3':
-            if (i + 1 < n && buf[i + 1] == '~') {
-              e.key = Event::KeyCode::Delete;
-              ++i;
-            } else
-              handled = false;
-            break;
-          case '4':
-            if (i + 1 < n && buf[i + 1] == '~') {
-              e.key = Event::KeyCode::End;
-              ++i;
-            } else
-              handled = false;
-            break;
-          case '5':
-            if (i + 1 < n && buf[i + 1] == '~') {
-              e.key = Event::KeyCode::PageUp;
-              ++i;
-            } else
-              handled = false;
-            break;
-          case '6':
-            if (i + 1 < n && buf[i + 1] == '~') {
-              e.key = Event::KeyCode::PageDown;
-              ++i;
-            } else
-              handled = false;
-            break;
-          default:
-            handled = false;
-            break;
+          case 'A': e.key = Event::KeyCode::Up;       break;
+          case 'B': e.key = Event::KeyCode::Down;     break;
+          case 'C': e.key = Event::KeyCode::Right;    break;
+          case 'D': e.key = Event::KeyCode::Left;     break;
+          case 'H': e.key = Event::KeyCode::Home;     break;
+          case 'F': e.key = Event::KeyCode::End;      break;
+          case '1': if (i+1<n && buf[i+1]=='~') { e.key=Event::KeyCode::Home;     ++i; } else handled=false; break;
+          case '2': if (i+1<n && buf[i+1]=='~') { e.key=Event::KeyCode::Insert;   ++i; } else handled=false; break;
+          case '3': if (i+1<n && buf[i+1]=='~') { e.key=Event::KeyCode::Delete;   ++i; } else handled=false; break;
+          case '4': if (i+1<n && buf[i+1]=='~') { e.key=Event::KeyCode::End;      ++i; } else handled=false; break;
+          case '5': if (i+1<n && buf[i+1]=='~') { e.key=Event::KeyCode::PageUp;   ++i; } else handled=false; break;
+          case '6': if (i+1<n && buf[i+1]=='~') { e.key=Event::KeyCode::PageDown; ++i; } else handled=false; break;
+          default:  handled = false; break;
           }
-          if (handled)
-            push(e);
+          if (handled) push(e);
           continue;
         }
         // Bare ESC
         {
           Event e;
           e.type = Event::Type::Key;
-          e.key = Event::KeyCode::Escape;
+          e.key  = Event::KeyCode::Escape;
           push(e);
         }
       } else {
         Event e;
         e.type = Event::Type::Key;
         unsigned char c = static_cast<unsigned char>(buf[i]);
-        if (c == '\r') {
-          e.key = Event::KeyCode::Enter;
-        } else if (c == '\t') {
-          e.key = Event::KeyCode::Tab;
-        } else if (c == 127) {
-          e.key = Event::KeyCode::Backspace;
-        } else if (c >= 1 && c <= 26) {
-          e.key = Event::KeyCode::Ctrl;
-          e.ch = static_cast<char>('A' + c - 1);
-        } else {
-          e.key = Event::KeyCode::Character;
-          e.ch = static_cast<char>(c);
-        }
+        if      (c == '\r')          e.key = Event::KeyCode::Enter;
+        else if (c == '\t')          e.key = Event::KeyCode::Tab;
+        else if (c == 127)           e.key = Event::KeyCode::Backspace;
+        else if (c >= 1 && c <= 26) { e.key = Event::KeyCode::Ctrl; e.ch = static_cast<char>('A' + c - 1); }
+        else                         { e.key = Event::KeyCode::Character; e.ch = static_cast<char>(c); }
         push(e);
       }
     }
 
 #else // _WIN32
     INPUT_RECORD rec[32];
-    DWORD n = 0;
-    if (!PeekConsoleInput(hIn, rec, 32, &n) || !n) {
+    DWORD nr = 0;
+    if (!PeekConsoleInput(hIn, rec, 32, &nr) || !nr) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
-    ReadConsoleInput(hIn, rec, n, &n);
-    for (DWORD i = 0; i < n; ++i) {
+    ReadConsoleInput(hIn, rec, nr, &nr);
+    for (DWORD i = 0; i < nr; ++i) {
       auto &r = rec[i];
       if (r.EventType == WINDOW_BUFFER_SIZE_EVENT) {
         Event e;
@@ -294,41 +211,22 @@ void InputHandler::poll_loop() {
         e.type = Event::Type::Key;
         WORD vk = r.Event.KeyEvent.wVirtualKeyCode;
         char ch = r.Event.KeyEvent.uChar.AsciiChar;
-        if (vk == VK_UP)
-          e.key = Event::KeyCode::Up;
-        else if (vk == VK_DOWN)
-          e.key = Event::KeyCode::Down;
-        else if (vk == VK_LEFT)
-          e.key = Event::KeyCode::Left;
-        else if (vk == VK_RIGHT)
-          e.key = Event::KeyCode::Right;
-        else if (vk == VK_RETURN)
-          e.key = Event::KeyCode::Enter;
-        else if (vk == VK_BACK)
-          e.key = Event::KeyCode::Backspace;
-        else if (vk == VK_DELETE)
-          e.key = Event::KeyCode::Delete;
-        else if (vk == VK_HOME)
-          e.key = Event::KeyCode::Home;
-        else if (vk == VK_END)
-          e.key = Event::KeyCode::End;
-        else if (vk == VK_PRIOR)
-          e.key = Event::KeyCode::PageUp;
-        else if (vk == VK_NEXT)
-          e.key = Event::KeyCode::PageDown;
-        else if (vk == VK_INSERT)
-          e.key = Event::KeyCode::Insert;
-        else if (vk == VK_ESCAPE)
-          e.key = Event::KeyCode::Escape;
-        else if (vk == VK_TAB)
-          e.key = Event::KeyCode::Tab;
-        else if (ch >= 1 && ch <= 26) {
-          e.key = Event::KeyCode::Ctrl;
-          e.ch = 'A' + ch - 1;
-        } else {
-          e.key = Event::KeyCode::Character;
-          e.ch = ch;
-        }
+        if      (vk == VK_UP)     e.key = Event::KeyCode::Up;
+        else if (vk == VK_DOWN)   e.key = Event::KeyCode::Down;
+        else if (vk == VK_LEFT)   e.key = Event::KeyCode::Left;
+        else if (vk == VK_RIGHT)  e.key = Event::KeyCode::Right;
+        else if (vk == VK_RETURN) e.key = Event::KeyCode::Enter;
+        else if (vk == VK_BACK)   e.key = Event::KeyCode::Backspace;
+        else if (vk == VK_DELETE) e.key = Event::KeyCode::Delete;
+        else if (vk == VK_HOME)   e.key = Event::KeyCode::Home;
+        else if (vk == VK_END)    e.key = Event::KeyCode::End;
+        else if (vk == VK_PRIOR)  e.key = Event::KeyCode::PageUp;
+        else if (vk == VK_NEXT)   e.key = Event::KeyCode::PageDown;
+        else if (vk == VK_INSERT) e.key = Event::KeyCode::Insert;
+        else if (vk == VK_ESCAPE) e.key = Event::KeyCode::Escape;
+        else if (vk == VK_TAB)    e.key = Event::KeyCode::Tab;
+        else if (ch >= 1 && ch <= 26) { e.key = Event::KeyCode::Ctrl; e.ch = 'A' + ch - 1; }
+        else                           { e.key = Event::KeyCode::Character; e.ch = ch; }
         push(e);
       }
     }
@@ -359,20 +257,13 @@ void InputHandler::pop() {
 }
 
 void InputHandler::start_poll() {
-  {
-    std::lock_guard<std::mutex> lock(mutex);
-    polling = true;
-  }
+  { std::lock_guard<std::mutex> lock(mutex); polling = true; }
   poll_thread = std::thread(&InputHandler::poll_loop, this);
 }
 
 void InputHandler::stop_poll() {
-  {
-    std::lock_guard<std::mutex> lock(mutex);
-    polling = false;
-  }
-  if (poll_thread.joinable())
-    poll_thread.join();
+  { std::lock_guard<std::mutex> lock(mutex); polling = false; }
+  if (poll_thread.joinable()) poll_thread.join();
 }
 
 void InputHandler::set_callbacks(InputCallbacks cbs) {

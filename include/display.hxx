@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <input_handler.hxx> // shared Event, Dir
@@ -29,7 +28,12 @@ struct ColorSpan {
   std::array<int, 3> RGB;
 };
 
+class Cursor; // forward declaration — full definition is in cursor.hxx
+
 class Display {
+
+  friend class Cursor; // Cursor needs direct access to viewport + data
+                       // internals
 
   void write_raw(const char *s, size_t n);
   void write_raw(const std::string &s);
@@ -39,8 +43,6 @@ class Display {
 
   static bool rgb_eq(const std::array<int, 3> &a, const std::array<int, 3> &b);
 
-  int cur_row_len() const;
-  void clamp_col_to_row();
   void emit_cursor_ansi(int r, int c);
   void buf_line_number(int dataRow);
   void render_line(int y);
@@ -52,11 +54,15 @@ class Display {
    */
   void render_extra_line(int extraY);
 
-  /* Marks a single content row (0-based screen-y) dirty for partial re-render. */
+  /* Marks a single content row (0-based screen-y) dirty for partial re-render.
+   */
   void mark_row_changed(int screenY);
 
   /* Recomputes extraDefaultBg to contrast against the current mainBg. */
   void update_extra_default_bg();
+
+  /* Used internally in destructor — does not go through Cursor singleton. */
+  void show_cursor_raw();
 
   Display();
   bool alt_screen = false;
@@ -81,17 +87,12 @@ class Display {
    */
   static constexpr int extraHeight = 2;
 
-  /*
-   * cursorPos is screen-data-relative, 1-based.
-   * Row 1 = top visible line, Col 1 = leftmost visible data column.
-   * Terminal column = cursorPos[1] + lnWidth (handled in emit_cursor_ansi).
-   */
-  std::array<int, 2> cursorPos = {1, 1};
   bool isChanged = false;
 
   /*
    * Per-content-row dirty flags (0-based, size = content_height()).
-   * render() only redraws flagged rows when neither isChanged nor scrollPending.
+   * render() only redraws flagged rows when neither isChanged nor
+   * scrollPending.
    */
   std::vector<bool> dirtyRows;
 
@@ -103,9 +104,10 @@ class Display {
   /*
    * Pinned extra area at the bottom of the terminal.
    *   extraSet        - caller has provided content via set_extra().
-   *   extraChanged    - only the extra rows need a redraw (not the content area).
-   *   extraDefaultBg  - contrasting fill used when extraSet is false.
-   *   extraBg/extraFg - colour spans; span.row is 0 or 1 (index into extra rows).
+   *   extraChanged    - only the extra rows need a redraw (not the content
+   * area). extraDefaultBg  - contrasting fill used when extraSet is false.
+   *   extraBg/extraFg - colour spans; span.row is 0 or 1 (index into extra
+   * rows).
    */
   bool extraSet = false;
   bool extraChanged = false;
@@ -149,8 +151,8 @@ public:
 
   void insert(int row, int col, char c);
   void erase(int row, int col);
-  /* Overwrites the character at (row, col) in-place without shifting neighbours.
-     Only the affected screen row is re-rendered. */
+  /* Overwrites the character at (row, col) in-place without shifting
+     neighbours. Only the affected screen row is re-rendered. */
   void replace(int row, int col, char c);
   void insert_line(int row);
   void newline();
@@ -162,27 +164,6 @@ public:
   void enterAlternateScreen();
   void exitAlternateScreen();
   void clear();
-  void hideCursor();
-  void showCursor();
-  void setCursorBlink(CursorBlink b);
-
-  // -----------------------------------------------------------------------
-  // Cursor movement
-  // -----------------------------------------------------------------------
-
-  // Moves the cursor; (r, c) are screen-data-relative, 1-based.
-  void move_cursor(int r, int c);
-  void move_cursor(std::array<int, 2> pos);
-
-  /* Moves the cursor by dist in direction dir, scrolling the viewport
-     when the cursor would leave the visible area. */
-  void move_cursor_relative(Dir dir, int dist);
-
-  // Returns {dataRow, dataCol} (0-based) of the cursor in the full data buffer.
-  std::array<int, 2> get_cursor_data_pos();
-
-  void go_line_start();
-  void go_line_end();
 
   // -----------------------------------------------------------------------
   // Scrolling
@@ -212,13 +193,13 @@ public:
   // Getters - viewport and terminal geometry
   // -----------------------------------------------------------------------
 
-  int get_width() const;           // raw terminal columns
-  int get_height() const;          // raw terminal rows (content + extra)
-  int get_extra_height() const;    // always extraHeight (2)
-  int get_start_row_data() const;  // current vertical viewport offset (0-based)
-  int get_start_col_data() const;  // current horizontal viewport offset (0-based)
+  int get_width() const;          // raw terminal columns
+  int get_height() const;         // raw terminal rows (content + extra)
+  int get_extra_height() const;   // always extraHeight (2)
+  int get_start_row_data() const; // current vertical viewport offset (0-based)
+  int get_start_col_data()
+      const; // current horizontal viewport offset (0-based)
   bool get_alt_screen() const;
-  std::array<int, 2> get_cursor_pos() const; // screen-data-relative, 1-based
 
   // -----------------------------------------------------------------------
   // Getters / setters - line-number gutter
@@ -258,9 +239,11 @@ public:
   // -----------------------------------------------------------------------
 
   /*
-   * Inserts a ColorSpan into `spans`, always keeping the new span fully visible.
+   * Inserts a ColorSpan into `spans`, always keeping the new span fully
+   * visible.
    *   - Same (row, start, end) as existing -> replaces it in-place.
-   *   - Overlapping existing -> trims/splits the existing span around the new one.
+   *   - Overlapping existing -> trims/splits the existing span around the new
+   * one.
    *   - No overlap / different row -> existing span kept as-is.
    */
   static void add_span(std::vector<ColorSpan> &spans, ColorSpan s);
@@ -307,8 +290,8 @@ public:
 
   bool get_is_changed() const;
   bool get_scroll_pending() const;
-  Dir  get_scroll_pending_dir() const;
-  int  get_scroll_pending_dist() const;
+  Dir get_scroll_pending_dir() const;
+  int get_scroll_pending_dist() const;
   const std::vector<bool> &get_dirty_rows() const;
 
   // -----------------------------------------------------------------------

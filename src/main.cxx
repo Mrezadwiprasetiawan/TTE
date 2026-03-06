@@ -1,127 +1,176 @@
-#include <csignal>
+#include <context.hxx>
+#include <cursor.hxx>
 #include <display.hxx>
-#include <fstream>
 #include <input_handler.hxx>
+
+#include <csignal>
+#include <fstream>
 #include <string>
 #include <unistd.h>
 #include <vector>
 
-static std::vector<std::vector<char>> parse_raw(const std::string &s,
-                                                int tabSize) {
+// ---------------------------------------------------------------------------
+// File loading
+// ---------------------------------------------------------------------------
+
+static std::vector<std::vector<char>> load_file(const std::string &path,
+                                                int tab_size) {
   std::vector<std::vector<char>> out;
-  std::vector<char> row;
-  for (char c : s) {
-    if (c == '\n') {
-      out.push_back(row);
-      row.clear();
-    } else if (c == '\r')
-      continue;
-    else if (c == '\t') {
-      int spaces = tabSize - (row.size() % tabSize);
-      for (int i = 0; i < spaces; ++i)
-        row.push_back(' ');
-    } else
-      row.push_back(c);
+  std::ifstream in(path);
+  if (!in.good())
+    return out;
+
+  std::string line;
+  while (std::getline(in, line)) {
+    std::vector<char> row;
+    for (char c : line) {
+      if (c == '\t') {
+        int spaces = tab_size - (int)(row.size() % tab_size);
+        for (int i = 0; i < spaces; ++i)
+          row.push_back(' ');
+      } else if (c != '\r') {
+        row.push_back(c);
+      }
+    }
+    out.push_back(std::move(row));
   }
-  out.push_back(row);
   return out;
 }
 
-volatile std::sig_atomic_t run = 1;
-void SIGINT_handler(int signal) { run = 0; }
+// ---------------------------------------------------------------------------
+// Signal
+// ---------------------------------------------------------------------------
+
+static volatile std::sig_atomic_t g_run = 1;
+static void on_sigint(int) { g_run = 0; }
+
+// ---------------------------------------------------------------------------
+// Callbacks
+// ---------------------------------------------------------------------------
+
+static void cb_resize(AppContext *ctx, int w, int h) {
+  ctx->display->notify_resize(w, h);
+}
+
+static void cb_key(AppContext *ctx, const Event &e) {
+  Display &disp = *ctx->display;
+  Cursor  &cur  = *ctx->cursor;
+  auto pos = cur.get_pos(); // {row, col}, screen-data-relative, 1-based
+
+  switch (e.key) {
+  case Event::KeyCode::Character:
+    disp.insert(pos[0], pos[1], e.ch);
+    break;
+
+  case Event::KeyCode::Enter:
+    disp.newline();
+    break;
+
+  case Event::KeyCode::Backspace:
+    disp.erase(pos[0], pos[1] - 1);
+    break;
+
+  case Event::KeyCode::Delete: {
+    /* Delete key: erase the character *at* the cursor (col, not col-1). */
+    auto dpos = cur.get_data_pos();
+    auto &data = disp.get_data();
+    if (dpos[0] < (int)data.size() && dpos[1] < (int)data[dpos[0]].size())
+      disp.erase(pos[0], pos[1]);
+    break;
+  }
+
+  case Event::KeyCode::Up:    cur.move_relative(Dir::UP,  1); break;
+  case Event::KeyCode::Down:  cur.move_relative(Dir::BOT, 1); break;
+  case Event::KeyCode::Left:  cur.move_relative(Dir::LFT, 1); break;
+  case Event::KeyCode::Right: cur.move_relative(Dir::RGT, 1); break;
+
+  case Event::KeyCode::PageUp:
+    disp.scroll_up(disp.content_height());
+    break;
+  case Event::KeyCode::PageDown:
+    disp.scroll_bot(disp.content_height());
+    break;
+
+  case Event::KeyCode::Home: cur.go_line_start(); break;
+  case Event::KeyCode::End:  cur.go_line_end();   break;
+
+  case Event::KeyCode::Tab:
+    /* Expand tab to spaces at the current position. */
+    for (int i = 0; i < ctx->tab_size; ++i) {
+      pos = cur.get_pos();
+      disp.insert(pos[0], pos[1], ' ');
+    }
+    break;
+
+  case Event::KeyCode::Ctrl:
+    if (e.ch == 'Q')
+      *ctx->run = 0;
+    break;
+
+  default:
+    break;
+  }
+}
+
+static void cb_mouse_scroll(AppContext *ctx, const Event &e) {
+  if (e.delta > 0)
+    ctx->display->scroll_up(e.delta);
+  else
+    ctx->display->scroll_bot(-e.delta);
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
 
 int main(int argc, const char **argv) {
-  using namespace std;
-  vector<vector<char>> data;
-  string filename = "";
+  /* Gather singletons. */
+  Display      &disp  = Display::getInstance();
+  Cursor       &cur   = Cursor::getInstance();
+  InputHandler &input = InputHandler::getInstance();
+
+  /* Build the application context. */
+  AppContext ctx;
+  ctx.display       = &disp;
+  ctx.cursor        = &cur;
+  ctx.input_handler = &input;
+  ctx.run           = &g_run;
+  ctx.tab_size      = 4;
+
   if (argc > 1)
-    filename = string(argv[1]);
-  if (!filename.empty()) {
-    ifstream in(filename);
-    if (in.good()) {
-      string line;
-      while (getline(in, line))
-        data.emplace_back(line.begin(), line.end());
-    }
-  }
-  Display &disp = Display::getInstance();
-  InputHandler &inHdl = InputHandler::getInstance();
-  disp.set_line_numbering(0);
-  InputCallbacks cbs;
-  cbs.ctx = &disp;
+    ctx.filename = argv[1];
 
-  cbs.onResize = [](void *ctx, int w, int h) {
-    Display *disp = (Display *)ctx;
-    disp->notify_resize(w, h);
-    disp->mark_changed();
-  };
+  /* Load file (or start with an empty buffer). */
+  std::vector<std::vector<char>> data;
+  if (!ctx.filename.empty())
+    data = load_file(ctx.filename, ctx.tab_size);
+  if (data.empty())
+    data.push_back({});   // always at least one line
 
-  cbs.onKey = [](void *ctx, const Event &e) {
-    Display *disp = (Display *)ctx;
-    std::array<int, 2> pos = disp->get_cursor_pos();
-    switch (e.key) {
-    default: {
-      disp->insert(pos[0], pos[1], e.ch);
-      break;
-    }
-    case Event::KeyCode::Enter:
-      disp->newline();
-      break;
-    case Event::KeyCode::Backspace:
-      disp->erase(pos[0], pos[1] - 1);
-      break;
-    case Event::KeyCode::Up:
-      disp->move_cursor_relative(Dir::UP, 1);
-      break;
-    case Event::KeyCode::Down:
-      disp->move_cursor_relative(Dir::BOT, 1);
-      break;
-    case Event::KeyCode::Left:
-      disp->move_cursor_relative(Dir::LFT, 1);
-      break;
-    case Event::KeyCode::Right:
-      disp->move_cursor_relative(Dir::RGT, 1);
-      break;
-
-    case Event::KeyCode::PageUp:
-      disp->scroll_up(disp->get_height());
-      break;
-    case Event::KeyCode::PageDown:
-      disp->scroll_bot(disp->get_height());
-      break;
-
-    case Event::KeyCode::Home:
-      disp->go_line_start();
-      break;
-    case Event::KeyCode::End:
-      disp->go_line_end();
-      break;
-
-    case Event::KeyCode::Ctrl:
-      if (e.ch == 'Q')
-        raise(SIGINT);
-      break;
-    }
-  };
-
-  cbs.onMouseScroll = [](void *ctx, const Event &e) {
-    Display *disp = (Display *)ctx;
-    if (e.delta > 0)
-      disp->scroll_up(e.delta);
-    else
-      disp->scroll_bot(-e.delta);
-  };
-
-  signal(SIGINT, SIGINT_handler);
-  inHdl.set_callbacks(cbs);
-  inHdl.start_poll();
+  /* Configure display. */
+  disp.set_line_numbering(false);
   disp.set_data(data);
-  disp.setCursorBlink(CursorBlink::bar);
-  while (run) {
-    inHdl.pop();
+
+  /* Configure cursor style. */
+  cur.set_blink(CursorBlink::bar);
+
+  /* Wire up input callbacks. */
+  InputCallbacks cbs;
+  cbs.ctx           = &ctx;
+  cbs.onResize      = cb_resize;
+  cbs.onKey         = cb_key;
+  cbs.onMouseScroll = cb_mouse_scroll;
+  input.set_callbacks(cbs);
+
+  /* Start input polling and the main loop. */
+  signal(SIGINT, on_sigint);
+  input.start_poll();
+
+  while (g_run) {
+    input.pop();
     disp.render();
-    usleep(16);
+    usleep(16000); // ~60 fps
   }
-  disp.exitAlternateScreen();
+
   return 0;
 }

@@ -54,12 +54,23 @@ struct Event {
   int w = 0, h = 0;
 };
 
+/* Full definition lives in context.hxx — only a pointer is stored here. */
+struct AppContext;
+
+/*
+ * All callback fields default to nullptr — assign only what you need.
+ * Every handler receives the same typed ctx pointer stored in this struct.
+ */
 struct InputCallbacks {
-#define FUNC_EVENT(name) (*name)(void*,const Event &)
-  void (*onResize)(void*,int, int), FUNC_EVENT(onKey), FUNC_EVENT(onMousePress),
-      FUNC_EVENT(onMouseRelease), FUNC_EVENT(onMouseMove),
-      FUNC_EVENT(onMouseScroll), FUNC_EVENT(onUnhandled);
-  void *ctx;
+  void (*onResize      )(AppContext *, int w, int h) = nullptr;
+  void (*onKey         )(AppContext *, const Event &) = nullptr;
+  void (*onMousePress  )(AppContext *, const Event &) = nullptr;
+  void (*onMouseRelease)(AppContext *, const Event &) = nullptr;
+  void (*onMouseMove   )(AppContext *, const Event &) = nullptr;
+  void (*onMouseScroll )(AppContext *, const Event &) = nullptr;
+  void (*onUnhandled   )(AppContext *, const Event &) = nullptr;
+
+  AppContext *ctx = nullptr;
 };
 
 class InputHandler {
