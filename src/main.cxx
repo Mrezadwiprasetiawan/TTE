@@ -111,10 +111,6 @@ static void cb_mouse_scroll(AppContext *ctx, const Event &e) {
   else ctx->display->scroll_bot(-e.delta);
 }
 
-// ---------------------------------------------------------------------------
-// main
-// ---------------------------------------------------------------------------
-
 int main(int argc, const char **argv) {
   /* Gather singletons. */
   Display      &disp  = Display::getInstance();
@@ -137,7 +133,8 @@ int main(int argc, const char **argv) {
   if (data.empty()) data.push_back({});  // always at least one line
 
   /* Configure display. */
-  disp.set_line_numbering(false);
+  disp.set_line_numbering(true);
+  disp.set_ln_colors({0, 0, 0}, {0, 255, 0});
   disp.set_data(data);
 
   /* Configure cursor style. */
@@ -158,7 +155,7 @@ int main(int argc, const char **argv) {
   while (g_run) {
     input.pop();
     disp.render();
-    usleep(8000);  // ~60 fps
+    usleep(16000);  // ~60 fps
   }
 
   return 0;

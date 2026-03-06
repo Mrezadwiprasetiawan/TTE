@@ -306,6 +306,7 @@ void InputHandler::pop() {
 void InputHandler::start_poll() {
   {
     std::lock_guard<std::mutex> lock(mutex);
+    if(polling) return;
     polling = true;
   }
   poll_thread = std::thread(&InputHandler::poll_loop, this);

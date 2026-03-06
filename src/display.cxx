@@ -50,6 +50,8 @@ void Display::buf_line_number(int dataRow) {
   BUF_FG(lnFg[0], lnFg[1], lnFg[2]);
   char tmp[16];
   renderBuf.append(tmp, snprintf(tmp, sizeof(tmp), "%*d ", lnWidth - 1, dataRow + 1));
+  BUF_BG(mainBg[0],mainBg[1],mainBg[2]);
+  BUF_FG(mainFg[0],mainFg[1],mainFg[2]);
 }
 
 void Display::update_extra_default_bg() {
