@@ -38,8 +38,24 @@ static std::vector<std::vector<char>> load_file(const std::string &path,
 }
 
 // ---------------------------------------------------------------------------
-// Signal
+// File saving
 // ---------------------------------------------------------------------------
+
+static bool save_file(const std::string &path,
+                      const std::vector<std::vector<char>> &data) {
+  if (path.empty())
+    return false;
+  std::ofstream out(path, std::ios::trunc);
+  if (!out.good())
+    return false;
+  for (const auto &row : data) {
+    out.write(row.data(), (std::streamsize)row.size());
+    out.put('\n');
+  }
+  return out.good();
+}
+
+
 
 static volatile std::sig_atomic_t g_run = 1;
 static void on_sigint(int) { g_run = 0; }
@@ -105,6 +121,8 @@ static void cb_key(AppContext *ctx, const Event &e) {
   case Event::KeyCode::Ctrl:
     if (e.ch == 'Q')
       *ctx->run = 0;
+    else if (e.ch == 'S')
+      save_file(ctx->filename, ctx->display->get_data());
     break;
 
   default:
@@ -169,7 +187,7 @@ int main(int argc, const char **argv) {
   while (g_run) {
     input.pop();
     disp.render();
-    usleep(16666); // ~60 fps
+    usleep(8000); // ~60 fps
   }
 
   return 0;
