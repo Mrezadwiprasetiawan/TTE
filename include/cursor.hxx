@@ -1,18 +1,17 @@
 #pragma once
 
 #include <array>
-#include <display.hxx> // CursorBlink, Dir, Display
+#include <display.hxx>  // CursorBlink, Dir, Display
 
 class Cursor {
-
   /*
    * pos is screen-data-relative, 1-based.
    * [0] = row  : 1 = top visible content line
    * [1] = col  : 1 = leftmost visible data column
    * Terminal column = pos[1] + lnWidth (resolved in Display::render).
    */
-  std::array<int, 2> pos = {1, 1};
-  CursorBlink blinkStyle = CursorBlink::def;
+  std::array<int, 2> pos        = {1, 1};
+  CursorBlink        blinkStyle = CursorBlink::def;
 
   /* Returns the character length of the data row under the cursor. */
   int cur_row_len() const;
@@ -22,8 +21,8 @@ class Cursor {
 
   Cursor() = default;
 
-public:
-  Cursor(const Cursor &) = delete;
+ public:
+  Cursor(const Cursor &)            = delete;
   Cursor &operator=(const Cursor &) = delete;
 
   static Cursor &getInstance();
@@ -66,6 +65,6 @@ public:
   void hide();
   void show();
 
-  void set_blink(CursorBlink b);
+  void        set_blink(CursorBlink b);
   CursorBlink get_blink() const;
 };

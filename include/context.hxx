@@ -31,5 +31,5 @@ struct AppContext {
   std::string filename;
 
   /* Spaces per tab when loading a file. */
-  int tab_size = 4;
+  int tab_size = 2;
 };

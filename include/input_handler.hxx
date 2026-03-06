@@ -2,7 +2,6 @@
 
 #include <mutex>
 #include <queue>
-#include <signal.h>
 #include <thread>
 
 #ifndef _WIN32
@@ -17,15 +16,7 @@
 enum class Dir { UP, BOT, RGT, LFT };
 
 struct Event {
-  enum class Type {
-    None,
-    Key,
-    MousePress,
-    MouseRelease,
-    MouseMove,
-    MouseScroll,
-    Resize
-  } type = Type::None;
+  enum class Type { None, Key, MousePress, MouseRelease, MouseMove, MouseScroll, Resize } type = Type::None;
 
   enum class KeyCode {
     None,
@@ -48,10 +39,10 @@ struct Event {
   } key = KeyCode::None;
 
   char ch = 0;
-  int x = 0, y = 0;
-  int button = 0;
-  int delta = 0;
-  int w = 0, h = 0;
+  int  x = 0, y = 0;
+  int  button = 0;
+  int  delta  = 0;
+  int  w = 0, h = 0;
 };
 
 /* Full definition lives in context.hxx — only a pointer is stored here. */
@@ -62,13 +53,13 @@ struct AppContext;
  * Every handler receives the same typed ctx pointer stored in this struct.
  */
 struct InputCallbacks {
-  void (*onResize      )(AppContext *, int w, int h) = nullptr;
-  void (*onKey         )(AppContext *, const Event &) = nullptr;
-  void (*onMousePress  )(AppContext *, const Event &) = nullptr;
+  void (*onResize)(AppContext *, int w, int h)        = nullptr;
+  void (*onKey)(AppContext *, const Event &)          = nullptr;
+  void (*onMousePress)(AppContext *, const Event &)   = nullptr;
   void (*onMouseRelease)(AppContext *, const Event &) = nullptr;
-  void (*onMouseMove   )(AppContext *, const Event &) = nullptr;
-  void (*onMouseScroll )(AppContext *, const Event &) = nullptr;
-  void (*onUnhandled   )(AppContext *, const Event &) = nullptr;
+  void (*onMouseMove)(AppContext *, const Event &)    = nullptr;
+  void (*onMouseScroll)(AppContext *, const Event &)  = nullptr;
+  void (*onUnhandled)(AppContext *, const Event &)    = nullptr;
 
   AppContext *ctx = nullptr;
 };
@@ -78,19 +69,19 @@ class InputHandler {
 
   void push(const Event &e);
 
-  InputCallbacks cbs;
+  InputCallbacks    cbs;
   std::queue<Event> back_queue, present_queue;
-  std::mutex mutex;
-  bool polling = false;
-  std::thread poll_thread;
+  std::mutex        mutex;
+  bool              polling = false;
+  std::thread       poll_thread;
 
 #ifndef _WIN32
   inline static volatile bool winch_flag = false;
-  static void handle_winch(int);
-  termios orig{};
+  static void                 handle_winch(int);
+  termios                     orig{};
 #else
-  HANDLE hIn = nullptr;
-  DWORD inModeOrig = 0;
+  HANDLE hIn        = nullptr;
+  DWORD  inModeOrig = 0;
 #endif
 
   void enable_raw();
@@ -101,8 +92,8 @@ class InputHandler {
   void dispatch(const Event &e);
   void poll_loop();
 
-public:
-  InputHandler(const InputHandler &) = delete;
+ public:
+  InputHandler(const InputHandler &)            = delete;
   InputHandler &operator=(const InputHandler &) = delete;
 
   static InputHandler &getInstance();

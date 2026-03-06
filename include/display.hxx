@@ -2,7 +2,7 @@
 
 #include <array>
 #include <cstdio>
-#include <input_handler.hxx> // shared Event, Dir
+#include <input_handler.hxx>  // shared Event, Dir
 #include <string>
 #include <vector>
 
@@ -14,26 +14,25 @@
 #endif
 
 enum class CursorBlink {
-  def = 0,
-  block = 1,
-  steadyBlock = 2,
-  underline = 3,
+  def             = 0,
+  block           = 1,
+  steadyBlock     = 2,
+  underline       = 3,
   steadyUnderline = 4,
-  bar = 5,
-  steadyBar = 6,
+  bar             = 5,
+  steadyBar       = 6,
 };
 
 struct ColorSpan {
-  int row, start, end;
+  int                row, start, end;
   std::array<int, 3> RGB;
 };
 
-class Cursor; // forward declaration — full definition is in cursor.hxx
+class Cursor;  // forward declaration — full definition is in cursor.hxx
 
 class Display {
-
-  friend class Cursor; // Cursor needs direct access to viewport + data
-                       // internals
+  friend class Cursor;  // Cursor needs direct access to viewport + data
+                        // internals
 
   void write_raw(const char *s, size_t n);
   void write_raw(const std::string &s);
@@ -68,18 +67,18 @@ class Display {
   bool alt_screen = false;
 
 #ifdef _WIN32
-  HANDLE hOut = nullptr;
-  DWORD outModeOrig = 0;
+  HANDLE hOut        = nullptr;
+  DWORD  outModeOrig = 0;
 #endif
 
   int width, height;
   int startRowData = 0, startColData = 0;
 
   // Line-number gutter
-  bool lineNumbering = true;
-  int lnWidth = 5; // digits + 1 trailing space
-  std::array<int, 3> lnBg = {0, 0, 0};
-  std::array<int, 3> lnFg = {255, 255, 255};
+  bool               lineNumbering = true;
+  int                lnWidth       = 5;  // digits + 1 trailing space
+  std::array<int, 3> lnBg          = {0, 0, 0};
+  std::array<int, 3> lnFg          = {255, 255, 255};
 
   /*
    * Number of rows pinned at the bottom for the extra area.
@@ -97,9 +96,9 @@ class Display {
   std::vector<bool> dirtyRows;
 
   std::vector<std::vector<char>> data;
-  std::array<int, 3> mainBg = {0, 0, 0};
-  std::array<int, 3> mainFg = {255, 255, 255};
-  std::vector<ColorSpan> bg, fg;
+  std::array<int, 3>             mainBg = {0, 0, 0};
+  std::array<int, 3>             mainFg = {255, 255, 255};
+  std::vector<ColorSpan>         bg, fg;
 
   /*
    * Pinned extra area at the bottom of the terminal.
@@ -109,23 +108,23 @@ class Display {
    *   extraBg/extraFg - colour spans; span.row is 0 or 1 (index into extra
    * rows).
    */
-  bool extraSet = false;
-  bool extraChanged = false;
+  bool                                       extraSet     = false;
+  bool                                       extraChanged = false;
   std::array<std::vector<char>, extraHeight> extraData;
-  std::vector<ColorSpan> extraBg, extraFg;
-  std::array<int, 3> extraDefaultBg = {180, 180, 190};
+  std::vector<ColorSpan>                     extraBg, extraFg;
+  std::array<int, 3>                         extraDefaultBg = {180, 180, 190};
 
-  std::string renderBuf;
+  std::string        renderBuf;
   std::array<int, 3> renderCurBg = {-1, -1, -1};
   std::array<int, 3> renderCurFg = {-1, -1, -1};
 
   // Incremental scroll state
-  bool scrollPending = false;
-  Dir scrollPendingDir = Dir::UP;
-  int scrollPendingDist = 0;
+  bool scrollPending     = false;
+  Dir  scrollPendingDir  = Dir::UP;
+  int  scrollPendingDist = 0;
 
-public:
-  Display(const Display &) = delete;
+ public:
+  Display(const Display &)            = delete;
   Display &operator=(const Display &) = delete;
 
   static Display &getInstance();
@@ -193,12 +192,11 @@ public:
   // Getters - viewport and terminal geometry
   // -----------------------------------------------------------------------
 
-  int get_width() const;          // raw terminal columns
-  int get_height() const;         // raw terminal rows (content + extra)
-  int get_extra_height() const;   // always extraHeight (2)
-  int get_start_row_data() const; // current vertical viewport offset (0-based)
-  int get_start_col_data()
-      const; // current horizontal viewport offset (0-based)
+  int  get_width() const;           // raw terminal columns
+  int  get_height() const;          // raw terminal rows (content + extra)
+  int  get_extra_height() const;    // always extraHeight (2)
+  int  get_start_row_data() const;  // current vertical viewport offset (0-based)
+  int  get_start_col_data() const;  // current horizontal viewport offset (0-based)
   bool get_alt_screen() const;
 
   // -----------------------------------------------------------------------
@@ -209,9 +207,9 @@ public:
   bool get_line_numbering() const;
 
   void set_ln_width(int w);
-  int get_ln_width() const;
+  int  get_ln_width() const;
 
-  void set_ln_colors(std::array<int, 3> bg, std::array<int, 3> fg);
+  void               set_ln_colors(std::array<int, 3> bg, std::array<int, 3> fg);
   std::array<int, 3> get_ln_bg() const;
   std::array<int, 3> get_ln_fg() const;
 
@@ -219,8 +217,8 @@ public:
   // Getters / setters - main content colours
   // -----------------------------------------------------------------------
 
-  void set_main_bg(int r, int g, int b);
-  void set_main_fg(int r, int g, int b);
+  void               set_main_bg(int r, int g, int b);
+  void               set_main_fg(int r, int g, int b);
   std::array<int, 3> get_main_bg() const;
   std::array<int, 3> get_main_fg() const;
 
@@ -228,10 +226,10 @@ public:
   // Getters / setters - content data
   // -----------------------------------------------------------------------
 
-  void set_row_data(int row, const std::vector<char> &buf);
-  void add_data(const std::vector<std::vector<char>> &buf);
-  void set_data(const std::vector<std::vector<char>> &d);
-  std::vector<std::vector<char>> &get_data();
+  void                                  set_row_data(int row, const std::vector<char> &buf);
+  void                                  add_data(const std::vector<std::vector<char>> &buf);
+  void                                  set_data(const std::vector<std::vector<char>> &d);
+  std::vector<std::vector<char>>       &get_data();
   const std::vector<std::vector<char>> &get_data() const;
 
   // -----------------------------------------------------------------------
@@ -248,9 +246,9 @@ public:
    */
   static void add_span(std::vector<ColorSpan> &spans, ColorSpan s);
 
-  void set_bg_span(ColorSpan s);
-  void set_fg_span(ColorSpan s);
-  void clear_color_spans();
+  void                          set_bg_span(ColorSpan s);
+  void                          set_fg_span(ColorSpan s);
+  void                          clear_color_spans();
   const std::vector<ColorSpan> &get_bg_spans() const;
   const std::vector<ColorSpan> &get_fg_spans() const;
 
@@ -271,27 +269,27 @@ public:
   void set_extra_fg_span(ColorSpan s);
   void clear_extra_spans();
 
-  bool get_extra_set() const;
-  bool get_extra_changed() const;
+  bool                                              get_extra_set() const;
+  bool                                              get_extra_changed() const;
   const std::array<std::vector<char>, extraHeight> &get_extra_data() const;
-  const std::vector<ColorSpan> &get_extra_bg_spans() const;
-  const std::vector<ColorSpan> &get_extra_fg_spans() const;
+  const std::vector<ColorSpan>                     &get_extra_bg_spans() const;
+  const std::vector<ColorSpan>                     &get_extra_fg_spans() const;
 
   /*
    * The contrasting background used when extraSet is false.
    * Auto-derived from mainBg, but can be overridden.
    */
-  void set_extra_default_bg(int r, int g, int b);
+  void               set_extra_default_bg(int r, int g, int b);
   std::array<int, 3> get_extra_default_bg() const;
 
   // -----------------------------------------------------------------------
   // Dirty / change state (read-only; mutate via mark_changed)
   // -----------------------------------------------------------------------
 
-  bool get_is_changed() const;
-  bool get_scroll_pending() const;
-  Dir get_scroll_pending_dir() const;
-  int get_scroll_pending_dist() const;
+  bool                     get_is_changed() const;
+  bool                     get_scroll_pending() const;
+  Dir                      get_scroll_pending_dir() const;
+  int                      get_scroll_pending_dist() const;
   const std::vector<bool> &get_dirty_rows() const;
 
   // -----------------------------------------------------------------------
